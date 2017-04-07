@@ -1,0 +1,758 @@
+---
+title: "STA 650 HW 3"
+author: "Leonardo Shu"
+date: "March 2, 2017"
+output: pdf_document
+---
+
+```{r, warning = FALSE, comment = FALSE, message = FALSE, echo = FALSE, size = "small"}
+set.seed(101)
+#set.seed(107)
+
+library(igraph)
+library(igraphdata)
+library(xtable)
+library(network)
+library(ergm)
+library(hergm)
+library(Matrix)
+library(networkD3)
+library(magrittr)
+library(MCL)
+library(mixedMem)
+library(CIDnetworks)
+library(data.table)
+library(readr)
+library(sand)
+library(sna)
+library(ape)
+library(mixer)
+library(eigenmodel)
+library(lda)
+library(plyr)
+```
+
+224 FEATURES
+```{r}
+graphEdges0 = read.csv(
+  file = '0.edges',
+  sep=" ", header=F,
+  col.names=c("source", "target"))
+
+graphEdges107 = read.csv(
+  file = '107.edges',
+  sep=" ", header=F,
+  col.names=c("source", "target"))
+
+#fromhello = read.csv("0.circles", sep= "\n", header = F)
+graphCircles = read.csv(
+  file = '0.circles',
+  sep = " ", header=F)
+
+#readLines("0.featnames")
+
+#graphCircles2 = read.table(
+#  file = '0.circles',
+#  sep = " ", header=T)
+
+#hello = read.csv("0.egofeat", header = F)
+featEgo = read.csv(
+  file = '0.egofeat',
+  sep="", header=F)
+
+graphFeatNames = read.csv(
+  file = '0.featnames',
+  sep="", header=F)
+graphFeatNames = as.character(graphFeatNames[,2])
+
+graphFeat = read.csv(
+  file = '0.feat',
+  sep="", header=F)
+graphFeat = graphFeat[,-1]
+colnames(graphFeat) = graphFeatNames
+colSums(graphFeat)
+
+#graphEdges107 = read.csv(
+#  file = '107.edges',
+#  sep=" ", header=F,
+#  col.names=c("source", "target"))
+
+#jointGraph = rbind(graphEdges, graphEdges107)+1
+
+# Check Uniqueness #
+#dim(jointGraph)
+#dim(unique(jointGraph))
+```
+
+Getting circles and finding duplicates:
+```{r}
+getCircles = function(circlesFile){
+  
+  # Read in the data
+  x = scan(circlesFile, what="", sep="\n")
+  # Separate elements by one or more whitepace
+  y = strsplit(x, "[[:space:]]+")
+  # Extract the first vector element and set it as the list element name
+  names(y) = sapply(y, `[[`, 1)
+  # Remove the first vector element from each list element
+  y = lapply(y, `[`, -1)
+  # Change character to numbers
+  y = sapply(y, as.numeric)
+  
+  circles0Names = names(y)
+  circles0 = y
+  
+  for(i in 1:length(y)){
+    circles0[[i]] = t(as.matrix(y[[i]]))
+  }
+  
+  circles0 = rbind.fill.matrix(circles0)
+  rownames(circles0) = circles0Names
+  
+  return(circles0)
+}
+
+getCirclesEst = function(circlesEst){
+  
+  #circles0Names = names(y)
+  y = circlesEst
+  circles0 = y
+  
+  for(i in 1:length(y)){
+    circles0[[i]] = t(as.matrix(y[[i]]))
+  }
+  
+  circles0 = rbind.fill.matrix(circles0)
+  #rownames(circles0) = circles0Names
+  
+  return(circles0)
+}
+
+
+for(i in 1:nrow(circles0)){
+  print(circles0[i, which(circles0[i,] != is.na(circles0[i,]))])
+}
+
+circles0 = getCircles("0.circles")
+table(circles0[1,])
+c0List = c(circles0)
+c0List = c0List[which(c0List != is.na(c0List))]
+length(unique(c0List))
+table(c0List)
+c0Multiple = as.matrix(table(c0List)[which(table(c0List) > 1)])
+multipleNodes = as.numeric(rownames(c0Multiple))
+```
+
+Getting the graph objects:
+```{r}
+graph.edges <- read.csv(
+  file = '0.edges',
+  sep=" ", header=F,
+  col.names=c("source", "target"))
+
+#graph.edges <- graph.edges - min(graph.edges) + 1
+#graph.nodes <- data.frame(
+#  id=seq(max(graph.edges) - min(graph.edges) + 1))
+#graph.nodes$group <- 1
+#graph.edges <- graphEdges - min(graphEdges) + 1
+
+edj0 = as.matrix(graph.edges)
+# Get adjacency #
+graph0 = graph_from_edgelist(edj0, directed = FALSE)
+adj0 = as.matrix(get.adjacency(graph0)/2)
+graph0 = as.undirected(graph_from_adjacency_matrix(adj0))
+plot(graph0,layout=layout_nicely(graph0))
+
+# ergm #
+HK1 = fit_hrg(K1)
+HK1$vertices
+HKTree = hrg_tree(HK1)
+HKTree
+plot(HKTree)
+plot_dendrogram(HK1)
+
+# hergm #
+K2 = network(as.matrix(graphEdges), directed = FALSE)
+HK2 = ergm(K2 ~ edges)
+summary(HK2)
+```
+
+```{r}
+# Node degrees
+# 'degree' has a mode of 'in' for in-degree, 'out' for out-degree,
+# and 'all' or 'total' for total degree. 
+deg <- degree(adj0)
+deg
+hist(deg,  main="Histogram of node degree")
+
+degC = centr_degree(K1, normalized=T)
+hist(degC$res)
+
+centr_clo(K1, mode="all", normalized=T) 
+
+centr_eigen(K1, directed=T, normalized=T) 
+
+#betweenness(KADJ)
+#edge_betweenness(K1)
+centr_betw(K1)
+```
+
+Clustering:
+```{r}
+##############
+graph.edges = edj0
+graph.edges <- as.data.frame(graph.edges - min(graph.edges) + 1)
+graph.nodes <- data.frame(
+  id=seq(max(graph.edges) - min(graph.edges) + 1))
+graph.nodes$group <- 1
+
+network <- forceNetwork(
+  Links = graph.edges - 1, Nodes = graph.nodes,
+  Source = "source", Target = "target",
+  NodeID = "id",
+  Group = "group", opacity = 0.8)
+network %>% saveNetwork(file = 'Net1.html')
+#print(network)
+
+graph.cluster <- function(nodes, edges){
+  n <- nrow(graph.nodes)
+  adjacency <- matrix(0, n, n)
+  index <- cbind(
+    graph.edges$source, graph.edges$target)
+  adjacency[index] <- 1
+  cluster <- mcl(
+    x = adjacency, addLoops=TRUE, ESM = TRUE)
+  #print(cluster$Cluster)
+  cluster$Cluster
+}
+
+# Assigning the clusters calculated #
+graph.nodes$group <- graph.cluster(
+  graph.nodes, graph.edges)
+
+# Checking the clusters #
+clusterID = as.integer(graph.nodes$group)
+clusterList1 = list()
+
+for(i in 1:length(unique(clusterID))){
+  clusterList1[[i]] = which(graph.nodes$group == unique(clusterID)[i])
+}
+
+circles0EstMCL = getCirclesEst(clusterList1)
+
+clustMCL = as_membership(graph.cluster(
+  graph.nodes, graph.edges)) + 1
+
+communities0MCL = make_clusters(graph0, membership = clustMCL)
+
+plot(communities0MCL, graph0)
+
+
+#K-Means#
+cluster2 = kmeans(adj0, centers = 24)
+graph.nodes$group = cluster2$cluster
+
+
+## IMPORTANT ##
+# Checking the clusters #
+clusterID = cluster2$cluster
+nodesID = graph.nodes$id
+
+clusterList = list()
+
+for(i in 1:length(unique(clusterID))){
+  clusterList[[i]] = which(graph.nodes$group == unique(clusterID)[i])
+}
+
+circles0EstK = getCirclesEst(clusterList)
+
+clustKmeans = as_membership(cluster2$cluster)
+
+communities0KMeans = make_clusters(graph0, membership = clustKmeans)
+
+plot(communities0KMeans, graph0)
+
+compareCircles = function(cTrue, cEst){
+  
+}
+
+
+network.cluster <- forceNetwork(
+  Links = graph.edges - 1, Nodes = graph.nodes,
+  Source = "source", Target = "target",
+  NodeID = "id",
+  Group = "group", opacity = 0.8)
+network.cluster %>% saveNetwork(file = 'Net2.html')
+
+#print(network.cluster)
+
+################################
+# FAST GREEDY #
+kc = fastgreedy.community(graph0)
+membership(kc)
+plot(kc, graph0)
+
+# LEADING EV #
+lev = leading.eigenvector.community(graph0)
+lev$membership
+membership(lev)
+plot(lev, graph0)
+```
+
+```{r, eval = FALSE}
+mmsbGibbs0 = mmsb.collapsed.gibbs.sampler(adj0, 20, num.iterations = 1000, alpha = 1, beta.prior = list(diag(1,20,20),diag(1,20,20)))
+```
+
+CID
+```{r}
+###DATA EXPLORATION
+
+###  Let's look at the structure of the Sampson Monastery data.
+load("sampson.RData")
+monk = Sampson
+###  Let's build a CID object
+friendObject <- CID(as.sociomatrix(monk))
+friendObject
+##explore the features of the CID object using following functions
+plot(monk)
+n.nodes(friendObject)  ## 71 nodes
+is.net.directed(friendObject) ##  This is a directed network
+#View(socio(friendObject))
+net.density(friendObject)  ##  0.1156  => a denser network than before
+
+##  VISUALIZATION of the network  ##
+
+###  Plotting Sociogram
+sociogram.plot(friendObject,main="Friend Network")
+
+###  Plotting Sociomatrix
+network.plot(friendObject,main="Friend Network")
+
+
+
+##############################################
+##  LET'S FIT SOME MODELS
+##############################################
+
+##Set the sampling parameters
+draws = 100 ##we want 100 draws
+thin = 10 ##thinned at every 10 steps
+burnin = 5000 ##the first 5000 draws are to be discarded as burnin
+#####################################################################
+
+
+###  Some of these models require very large burnins,
+###  so we've fit these models beforehand, and will load
+###  them now.
+load("SBM-model-fits.RData")
+
+
+####  Stochastic Block Model:
+####    These models require us to specify the number of blocks.
+####    For now, let's look at the model with 3 blocks.
+mod.SBM.3 <- CID.Gibbs(as.sociomatrix(monk),
+                       components=list(SBM(3)),
+                       draws=draws,thin=thin,burnin=burnin)
+SBM.plot(mod.SBM.3)
+SBM.sum <- summary(mod.SBM.3)
+SBM.sum
+round(pnorm(SBM.sum$SBMcid$block),3)
+
+
+####  Now, we can plot the observed and fitted sociomatrices:
+par(mfrow=c(1,2))
+network.plot(mod.SBM.3)
+network.plot(mod.SBM.3,fitted=TRUE)
+
+#####  Mixed Membership Stochastic Block Model:
+#####    We still must specify the number of blocks.
+#####    Here we look at 3 blocks.
+mod.MMSBM.3 <- CID.Gibbs(as.sociomatrix(monk),
+                         components=list(MMSBM(3)),
+                         draws=draws,thin=thin,burnin=burnin)
+MMSBM.plot(mod.MMSBM.3)
+
+
+###  Plotting the Sociomatrix
+par(mfrow=c(1,2))
+network.plot(mod.MMSBM.3)
+network.plot(mod.MMSBM.3,fitted=TRUE)
+
+
+
+#####  Latent Space Model:
+#####    We specify the dimension of the latent space.
+#####    Here we consider 2 dimensions.
+mod.LSM <- CID.Gibbs(as.sociomatrix(monk),
+                     components=list(LSM(2)),
+                     draws=draws,thin=thin,burnin=burnin)
+LSM.plot(mod.LSM)
+
+###  Plotting the Sociomatrix
+par(mfrow=c(1,2))
+network.plot(mod.LSM)
+network.plot(mod.LSM,fitted=TRUE)
+```
+
+```{r}
+###DATA EXPLORATION
+
+###  Let's build a CID object
+CID0 <- CID(as.matrix(adj0))
+
+##explore the features of the CID object using following functions
+n.nodes(CID0)
+is.net.directed(CID0) 
+#View(socio(CID0))
+net.density(CID0)
+
+##  VISUALIZATION of the network  ##
+
+###  Plotting Sociogram
+sociogram.plot(CID0, main="Friend Network")
+
+###  Plotting Sociomatrix
+network.plot(CID0,main="Friend Network")
+
+gendercolor2 = as.character(graphFeat[, 78])
+gendercolor2 = gsub ("0", "red", gendercolor2)   #specifying  the  colors for  female  (=1)  and male  (=2)
+gendercolor2 = gsub ("1", "blue", gendercolor2)
+
+plot.igraph(graph0 , layout = layout.fruchterman.reingold , vertex.color
+= gendercolor2 ,
+vertex.size = 15, vertex.label.cex = 0.65,  main = "Gender (Red=
+F, Blue=M)",
+frame = TRUE)
+
+# FAST GREEDY #
+kc = fastgreedy.community(graph0)
+membership(kc)
+plot(kc, graph0)
+
+# LEADING EV #
+lev = leading.eigenvector.community(graph0)
+lev$membership
+membership(lev)
+
+kc = fastgreedy.community(karate) 
+membership(kc)
+plot(kc, karate)
+dendPlot(kc, mode="phylo")
+
+
+
+# Validating Partitions #
+yeast.gc <- decompose.graph(yeast)[[1]]
+func.class <- vertex_attr(yeast.gc, "Class")
+table(func.class)
+yc <- fastgreedy.community(yeast.gc)
+yc
+c.m <- membership(yc)
+table(c.m, func.class, useNA=c("no"))
+```
+
+Clearly the actual number of communities detected in the original
+karate network (i.e., three) would be considered unusual from the perspective of
+random graphs of fixed size. There is likely an additional mechanism(s) at work, one that goes beyond simply the density and the distribution of social interactions
+in this network.
+```{r}
+nv <- vcount(graph0)
+ne <- ecount(graph0)
+degs <- degree(adj0)
+ntrials <- 1000
+
+# Classical #
+num.comm.rg <- numeric(ntrials)
+for(i in (1:ntrials)){
+  g.rg <- erdos.renyi.game(nv, ne, type="gnm")
+  c.rg <- fastgreedy.community(g.rg)
+  num.comm.rg[i] <- length(c.rg)
+}
+
+rslts <- num.comm.rg
+indx <- rep(0, ntrials)
+counts <- table(indx, rslts)/ntrials
+barplot(counts, beside=TRUE, col=c("blue"),
+  xlab="Number of Communities",
+  ylab="Relative Frequency",
+  legend=c("Fixed Size"))
+```
+sbm classifiaction
+```{r}
+setSeed(101)
+
+graph0.sbm <- mixer(as.matrix(adj0), qmin=2, qmax=28, method = "")
+graph0.sbm.class <- mixer(as.matrix(adj0), qmin=2, qmax=28, method = "classification")
+save(graph0.sbm, file = "SBM0_v2.RData")
+
+graph0.sbm.output = getModel(graph0.sbm)
+graph0.sbm.class.output = getModel(graph0.sbm.class)
+
+names(graph0.sbm.output)
+names(graph0.sbm.class.output)
+
+graph0.sbm.output$q
+graph0.sbm.output$alphas
+graph0.sbm.output$Taus[, 1:3]
+
+graph0.sbm.class.output$q
+graph0.sbm.class.output$alphas
+graph0.sbm.class.output$Taus[, 1:3]
+
+#plot(graph0.sbm, classes = NULL)
+```
+sbm classifiaction
+```{r}
+graph0.BM = BM_bernoulli("SBM", adj0)
+k1 = graph0.BM$estimate()
+which.max(graph0.BM$ICL)
+graph0.BM$memberships
+Z = graph0.BM$memberships[[12]]$Z
+plot(graph0.BM$`.->ICL`)
+```
+
+```{r}
+graph0.leig.fit1 <- eigenmodel_mcmc(adj0, R=2, S=11000, burn=10000)
+lat.sp.1 <- eigen(graph0.leig.fit1$ULU_postmean)$vec[, 1:2]
+plot(graph0, layout=lat.sp.1,)
+plot(graph0)
+```
+
+
+
+```{r}
+##############################################
+##  LET'S FIT SOME MODELS
+##############################################
+
+##Set the sampling parameters
+draws = 100 ##we want 100 draws
+thin = 10 ##thinned at every 10 steps
+burnin = 5000 ##the first 5000 draws are to be discarded as burnin
+#####################################################################
+###  Some of these models require very large burnins,
+###  so we've fit these models beforehand, and will load
+###  them now.
+load("SBM-model-fits.RData")
+
+####  Stochastic Block Model:
+####    These models require us to specify the number of blocks.
+####    For now, let's look at the model with 3 blocks.
+graph0.SBM <- CID.Gibbs(CID0,
+                       components=list(SBM(5)),
+                       draws=draws,thin=thin,burnin=burnin)
+SBM.plot(graph0.SBM)
+graph0.MMSBM <- CID.Gibbs(CID0,
+                         components=list(MMSBM(5)),
+                         draws=draws,thin=thin,burnin=burnin)
+
+save(graph0.SBM, file = "A_SBM0.RData")
+save(graph0.MMSBM, file = "A_MMSBM0.RData")
+
+load("SBM0.RData")
+
+
+SBM.sum <- summary(graph0.SBM)
+SBM.sum
+round(pnorm(SBM.sum$SBMcid$block),3)
+names(mod.SBM.3)
+length(mod.SBM.3$results)
+
+####  Now, we can plot the observed and fitted sociomatrices:
+par(mfrow=c(1,2))
+network.plot(graph0.SBM)
+network.plot(mod.SBM.3,fitted=TRUE)
+
+#####  Mixed Membership Stochastic Block Model:
+#####    We still must specify the number of blocks.
+#####    Here we look at 3 blocks.
+mod.MMSBM.3 <- CID.Gibbs(as.sociomatrix(monk),
+                         components=list(MMSBM(3)),
+                         draws=draws,thin=thin,burnin=burnin)
+MMSBM.plot(mod.MMSBM.3)
+
+
+###  Plotting the Sociomatrix
+par(mfrow=c(1,2))
+network.plot(mod.MMSBM.3)
+network.plot(mod.MMSBM.3,fitted=TRUE)
+
+
+
+#####  Latent Space Model:
+#####    We specify the dimension of the latent space.
+#####    Here we consider 2 dimensions.
+mod.LSM <- CID.Gibbs(as.sociomatrix(monk),
+                     components=list(LSM(2)),
+                     draws=draws,thin=thin,burnin=burnin)
+LSM.plot(mod.LSM)
+
+###  Plotting the Sociomatrix
+par(mfrow=c(1,2))
+network.plot(mod.LSM)
+network.plot(mod.LSM,fitted=TRUE)
+```
+
+Kaggle Data:
+```{r}
+features = read_lines("features.txt")
+featureList = read.table("featureList.txt")
+head(features)
+testFeat = features[[1]]
+testFeat = unlist(strsplit(testFeat, ";"))
+
+# Reading Data #
+graphEdges = read.csv(
+  file = '0.egonet',
+  sep=" ", header=F)
+
+# Formatting to get EdgeList Format #
+nodeN = as.character(graphEdges[,1])
+nodeN = unlist(strsplit(nodeN, ":"))
+nodeN = as.numeric(nodeN)
+graphEdges = graphEdges[,-1]
+
+edgeList0 = as.data.frame(matrix(0,1,2))
+colnames(edgeList0) = c("Source", "Target")
+for(i in 1:dim(graphEdges)[1]){
+  for(j in 1:dim(graphEdges)[2]){
+    newEdge = c(nodeN[i], graphEdges[i,j])
+    edgeList0 = rbind(edgeList0, newEdge)
+  }
+}
+edgeList0 = edgeList0[-1,]
+edgeList0 <- edgeList0[ !is.na(apply(edgeList0 ,1,mean)) ,]
+edgeList0 = unique(t(as.matrix(apply(edgeList0, 1, sort))))
+
+# Getting it to the correct type #
+net0 = graph_from_edgelist(as.matrix(edgeList0), directed = F)
+plot(net0)
+adj0 = get.adjacency(net0)
+adj0 = as.matrix(adj0)
+
+coso = (adj0^2)/2
+
+adjExpL = list()
+for(i in 1:dim(adj0)[1]){
+  adjExpL[[i]] = (adj0^i)/factorial(i)
+}
+Reduce('+', adjExpL)
+
+
+adj0 = as.sociomatrix(adj0)
+###  Let's build a CID object
+ego0 = CID(adj0)
+sociogram.plot(ego0)
+```
+
+```{r}
+##############################################
+##  LET'S FIT SOME MODELS
+##############################################
+
+##Set the sampling parameters
+draws = 100 ##we want 100 draws
+thin = 10 ##thinned at every 10 steps
+burnin = 5000 ##the first 5000 draws are to be discarded as burnin
+#####################################################################
+
+####  Stochastic Block Model:
+####    These models require us to specify the number of blocks.
+####    For now, let's look at the model with 3 blocks.
+mod.SBM.0 <- CID.Gibbs(ego0,
+                       components=list(SBM(5)),
+                       draws=draws,thin=thin,burnin=burnin)
+SBM.plot(mod.SBM.0)
+
+save(mod.SBM.0, file = "K_SBM0.RData")
+
+SBM.sum <- summary(mod.SBM.3)
+SBM.sum
+round(pnorm(SBM.sum$SBMcid$block),3)
+names(mod.SBM.3)
+length(mod.SBM.3$results)
+
+####  Now, we can plot the observed and fitted sociomatrices:
+par(mfrow=c(1,2))
+network.plot(mod.SBM.3)
+network.plot(mod.SBM.3,fitted=TRUE)
+
+#####  Mixed Membership Stochastic Block Model:
+#####    We still must specify the number of blocks.
+#####    Here we look at 3 blocks.
+mod.MMSBM.3 <- CID.Gibbs(as.sociomatrix(monk),
+                         components=list(MMSBM(3)),
+                         draws=draws,thin=thin,burnin=burnin)
+MMSBM.plot(mod.MMSBM.3)
+
+
+###  Plotting the Sociomatrix
+par(mfrow=c(1,2))
+network.plot(mod.MMSBM.3)
+network.plot(mod.MMSBM.3,fitted=TRUE)
+
+
+
+#####  Latent Space Model:
+#####    We specify the dimension of the latent space.
+#####    Here we consider 2 dimensions.
+mod.LSM <- CID.Gibbs(as.sociomatrix(monk),
+                     components=list(LSM(2)),
+                     draws=draws,thin=thin,burnin=burnin)
+LSM.plot(mod.LSM)
+
+###  Plotting the Sociomatrix
+par(mfrow=c(1,2))
+network.plot(mod.LSM)
+network.plot(mod.LSM,fitted=TRUE)
+```
+
+K-means Clustering:
+Found that setting K=10 for people with more than 350 friends and K=6 for fewer than 350 friends worked well for the test data
+```{r}
+graph.edges <- read.csv(
+  file = '0.edges',
+  sep=" ", header=F,
+  col.names=c("source", "target"))
+graph.edges <- graph.edges - min(graph.edges) + 1
+
+
+nodeList0 <- data.frame(
+  id=seq(max(edgeList0) - min(edgeList0) + 1))
+nodeList0$group <- 1
+
+network <- forceNetwork(
+  Links = edgeList0 - 1, Nodes = nodeList0,
+  Source = "source", Target = "target",
+  NodeID = "id",
+  Group = "group", opacity = 0.8)
+network %>% saveNetwork(file = 'Net1.html')
+#print(network)
+
+graph.cluster <- function(nodes, edges){
+  n <- nrow(graph.nodes)
+  adjacency <- matrix(0, n, n)
+  index <- cbind(
+    graph.edges$source, graph.edges$target)
+  adjacency[index] <- 1
+  cluster <- mcl(
+    x = adjacency, addLoops=TRUE, ESM = TRUE)
+  print(cluster$Cluster)
+  cluster$Cluster
+}
+
+graph.nodes$group <- graph.cluster(
+  graph.nodes, graph.edges)
+
+cluster2 = kmeans(adjacency, centers = 20)
+graph.nodes$group = cluster2$cluster
+
+network.cluster <- forceNetwork(
+  Links = graph.edges - 1, Nodes = graph.nodes,
+  Source = "source", Target = "target",
+  NodeID = "id",
+  Group = "group", opacity = 0.8)
+network.cluster %>% saveNetwork(file = 'Net2.html')
+
+print(network.cluster)
+```
