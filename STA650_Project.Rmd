@@ -5,6 +5,15 @@ date: "March 2, 2017"
 output: pdf_document
 ---
 
+K-means
+fast greedy = hier clust
+lev
+spectral
+SBM
+SBMMM
+spectral cov
+
+Packages:
 ```{r, warning = FALSE, comment = FALSE, message = FALSE, echo = FALSE, size = "small"}
 set.seed(101)
 #set.seed(107)
@@ -28,64 +37,22 @@ library(sna)
 library(ape)
 library(mixer)
 library(eigenmodel)
+library(blockmodels)
 library(lda)
 library(plyr)
 ```
 
-224 FEATURES
+Loading the data:
 ```{r}
-graphEdges0 = read.csv(
-  file = '0.edges',
-  sep=" ", header=F,
-  col.names=c("source", "target"))
-
-graphEdges107 = read.csv(
-  file = '107.edges',
-  sep=" ", header=F,
-  col.names=c("source", "target"))
-
-#fromhello = read.csv("0.circles", sep= "\n", header = F)
-graphCircles = read.csv(
-  file = '0.circles',
-  sep = " ", header=F)
-
-#readLines("0.featnames")
-
-#graphCircles2 = read.table(
-#  file = '0.circles',
-#  sep = " ", header=T)
-
-#hello = read.csv("0.egofeat", header = F)
-featEgo = read.csv(
-  file = '0.egofeat',
-  sep="", header=F)
-
-graphFeatNames = read.csv(
-  file = '0.featnames',
-  sep="", header=F)
-graphFeatNames = as.character(graphFeatNames[,2])
-
-graphFeat = read.csv(
-  file = '0.feat',
-  sep="", header=F)
-graphFeat = graphFeat[,-1]
-colnames(graphFeat) = graphFeatNames
-colSums(graphFeat)
-
-#graphEdges107 = read.csv(
-#  file = '107.edges',
+#getEdges = function(graphFile){
+#  graphEdgesK = read.csv(
+#  file = graphFile,
 #  sep=" ", header=F,
 #  col.names=c("source", "target"))
+#  
+#  return(graphEdgesK)
+#}
 
-#jointGraph = rbind(graphEdges, graphEdges107)+1
-
-# Check Uniqueness #
-#dim(jointGraph)
-#dim(unique(jointGraph))
-```
-
-Getting circles and finding duplicates:
-```{r}
 getCircles = function(circlesFile){
   
   # Read in the data
@@ -128,27 +95,447 @@ getCirclesEst = function(circlesEst){
   return(circles0)
 }
 
+# Edgelist for Kaggle #
+getEdgesK = function(edgeFile){
+  graphKEdges = getCircles(edgeFile)
+  nodeN = as.numeric(str_replace(rownames(graphKEdges), pattern =  ":", replacement = ""))
+  rownames(graphKEdges) = c()
+  indexNA = c()
+  for(i in 1:dim(graphKEdges)[1]){
+    if(is.na(graphKEdges[i,1])){
+      indexNA = c(indexNA, i)
+    } 
+  }
+  graphKEdges = graphKEdges[-indexNA,]
+  nodeN = nodeN[-indexNA]
+  
+  edgeListK = as.data.frame(matrix(0,1,2))
+  colnames(edgeListK) = c("Source", "Target")
+  for(i in 1:dim(graphKEdges)[1]){
+    for(j in 1:dim(graphKEdges)[2]){
+      newEdge = c(nodeN[i], graphKEdges[i,j])
+      edgeListK = rbind(edgeListK, newEdge)
+    }
+  }
+  edgeListK = edgeListK[-1,]
+  edgeListK = edgeListK[ !is.na(apply(edgeListK ,1,mean)) ,]
+  edgeListK = unique(t(as.matrix(apply(edgeListK, 1, sort))))
 
-for(i in 1:nrow(circles0)){
-  print(circles0[i, which(circles0[i,] != is.na(circles0[i,]))])
+  edjK = as.matrix(edgeListK)
+  rownames(edjK) = c()
+  
+  return(edjK)
+} 
+
+getGraph = function(edjK){
+  temp = apply(edjK,1,as.character)
+  temp = t(temp)
+  graphK = graph_from_edgelist(temp, directed = FALSE)
+  return(graphK)
 }
 
-circles0 = getCircles("0.circles")
-table(circles0[1,])
-c0List = c(circles0)
-c0List = c0List[which(c0List != is.na(c0List))]
-length(unique(c0List))
-table(c0List)
-c0Multiple = as.matrix(table(c0List)[which(table(c0List) > 1)])
-multipleNodes = as.numeric(rownames(c0Multiple))
+#Need to remove missing#
+
+fixMissing = function(edjK, missingN){
+  indexFix = c()
+    for(i in 1:dim(edjK)[1]){
+      for(j in 1:length(missingN)){
+        if(missingN[j] %in% edjK[i,]){
+          indexFix = c(indexFix, i)
+        }
+      }
+    } 
+  return(indexFix)
+}
+
+getTrueCircles = function(graphNodesK, circlesK){
+  truthK = c()
+  for(i in 1:length(graphNodesK$id)){
+    for(j in 1:dim(circlesK)[1]){
+      if(graphNodesK$id[i] %in% circlesK[j,]){
+        truthK[i] = j  
+      }
+    }
+  }
+  return(truthK)
+}
+
+length(getTrueCircles(graphNodes239, graph239Circles))
+length(getTrueCircles(nodes345, circles345))
+
+getMissingNodes = function(grapNodesK, truthK){
+  missingNodes = graphNodesK$id[which(is.na(truthK))]
+  return(missingNodes)
+}
+
+fixCircles = function(truthK){
+  truthKFix = truthK[-which(is.na(truthK))]
+  return(truthKFix)
+}
+
+
+fixEdges = function(edjK, circlesK, graphNodesK, missingNodes){
+  index = fixMissing(edjK, missingNodes)
+  edjKFix = edjK[-index,]
+  return(edjKFix)
+}
+
+# Get adjacency #
+getAdjacency = function(graphK){
+  adjK = as.matrix(get.adjacency(graphK))
+  return(adjK)
+}
+
+#adj239 = as.matrix(get.adjacency(graph239))
+
+# Graph Nodes #
+getNodes = function(adjK){
+  graphNodesK <- data.frame(
+  id=as.integer(rownames(adjK)))
+  graphNodesK$group <- 1
+  #dim(graphNodesK)
+  return(graphNodesK)
+}
+
+#graphEdges0 = read.csv(
+#  file = '0.edges',
+#  sep=" ", header=F,
+#  col.names=c("source", "target"))
+
+#graphEdges107 = read.csv(
+#  file = '107.edges',
+#  sep=" ", header=F,
+#  col.names=c("source", "target"))
+
+#fromhello = read.csv("0.circles", sep= "\n", header = F)
+#graphCircles = read.csv(
+#  file = '0.circles',
+#  sep = " ", header=F)
+
+#graph239Egonet = read.csv(
+#  file = '239.egonet',
+#  sep = " ", header=F)
+
+#graph239Circles = read.csv(
+#  file = '239.circles',
+#  sep = " ", header=F)
+
+#readLines("0.featnames")
+
+#graphCircles2 = read.table(
+#  file = '0.circles',
+#  sep = " ", header=T)
+
+#hello = read.csv("0.egofeat", header = F)
+
+
+# Features #
+#featEgo = read.csv(
+#  file = '0.egofeat',
+#  sep="", header=F)
+
+#graphFeatNames = read.csv(
+#  file = '0.featnames',
+#  sep="", header=F)
+#graphFeatNames = as.character(graphFeatNames[,2])
+
+#graphFeat = read.csv(
+#  file = '0.feat',
+#  sep="", header=F)
+#graphFeat = graphFeat[,-1]
+#colnames(graphFeat) = graphFeatNames
+#colSums(graphFeat)
 ```
+
+Kaggle Data:
+```{r}
+features = read_lines("features.txt")
+featureList = read.table("featureList.txt")
+head(features)
+testFeat = features[[1]]
+testFeat = unlist(strsplit(testFeat, ";"))
+
+# Reading Data #
+#graph239Circles = read.csv(
+#  file = '239.circles',
+#  sep=" ", header=F)
+#graph239Circles = graph239Circles[,-1]
+
+#getCircles = function(graphFile){
+#  graphKCircles = read.csv(
+#  file = graphFile,
+#  sep=" ", header=F)
+#  graphKCircles = graphKCircles[,-1]
+#  return(graphKCircles)
+#}
+
+#graph239Circles = getCircles('239.circles')
+
+
+# Get membership vector for circles #
+# Make truth into vector #
+truth239 = c()
+for(i in 1:length(graphNodes239$id)){
+  for(j in 1:dim(graph239Circles)[1]){
+    if(graphNodes239$id[i] %in% graph239Circles[j,]){
+      truth239[i] = j  
+    }
+  }
+}
+missingNodes = graphNodes239$id[which(is.na(truth239))]
+truth239 = truth239[-which(is.na(truth239))]
+
+# Formatting to get EdgeList Format #
+# Get node list #
+getEdges = function(graphFile){
+  graphKEdges = read.csv(
+  file = graphFile,
+  sep=" ", header=F)
+  
+  nodeN = as.character(graphKEdges[,1])
+  nodeN = unlist(strsplit(nodeN, ":"))
+  nodeN = as.numeric(nodeN)
+  graphKEdges = graphKEdges[,-1]
+  
+  edgeListK = as.data.frame(matrix(0,1,2))
+  colnames(edgeListK) = c("Source", "Target")
+  for(i in 1:dim(graphKEdges)[1]){
+    for(j in 1:dim(graphKEdges)[2]){
+      newEdge = c(nodeN[i], graphKEdges[i,j])
+      edgeListK = rbind(edgeListK, newEdge)
+    }
+  }
+  edgeListK = edgeListK[-1,]
+  edgeListK <- edgeListK[ !is.na(apply(edgeListK, 1, mean)) ,]
+  edgeListK = unique(t(as.matrix(apply(edgeListK, 1, sort))))
+  
+  edjK = as.matrix(edgeListK)
+  rownames(edjK) = c()
+  
+  return(edjK)
+}
+
+# Make graph #
+
+getGraph = function(edjK){
+  temp = apply(edjK,1,as.character)
+  temp = t(temp)
+  graphK = graph_from_edgelist(temp, directed = FALSE)
+  return(graphK)
+}
+
+
+
+######
+
+graph239Edges = read.csv(
+  file = '239.egonet',
+  sep=" ", header=F)
+
+nodeN = as.character(graph239Edges[,1])
+nodeN = unlist(strsplit(nodeN, ":"))
+nodeN = as.numeric(nodeN)
+graph239Edges = graph239Edges[,-1]
+
+edgeList239 = as.data.frame(matrix(0,1,2))
+colnames(edgeList239) = c("Source", "Target")
+for(i in 1:dim(graph239Edges)[1]){
+  for(j in 1:dim(graph239Edges)[2]){
+    newEdge = c(nodeN[i], graph239Edges[i,j])
+    edgeList239 = rbind(edgeList239, newEdge)
+  }
+}
+edgeList239 = edgeList239[-1,]
+edgeList239 <- edgeList239[ !is.na(apply(edgeList239 ,1,mean)) ,]
+edgeList239 = unique(t(as.matrix(apply(edgeList239, 1, sort))))
+
+edj239 = as.matrix(edgeList239)
+rownames(edj239) = c()
+###########
+
+
+getTrueCircles = function(graphNodesK, circlesK){
+  truthK = c()
+  for(i in 1:length(graphNodesK$id)){
+    for(j in 1:dim(circlesK)[1]){
+      if(graphNodesK$id[i] %in% circlesK[j,]){
+        truthK[i] = j  
+      }
+    }
+  }
+  return(truthK)
+}
+
+length(getTrueCircles(graphNodes239, graph239Circles))
+length(getTrueCircles(nodes345, circles345))
+
+getMissingNodes = function(grapNodesK, truthK){
+  missingNodes = graphNodesK$id[which(is.na(truthK))]
+  return(missingNodes)
+}
+
+fixCircles = function(truthK){
+  truthKFix = truthK[-which(is.na(truthK))]
+  return(truthKFix)
+}
+
+
+fixEdges = function(edjK, circlesK, graphNodesK, missingNodes){
+  index = fixMissing(edjK, missingNodes)
+  edjKFix = edjK[-index,]
+  return(edjKFix)
+}
+
+#getGraph = function(edjK){
+#  temp = apply(edjK,1,as.character)
+#  temp = t(temp)
+#  graphK = graph_from_edgelist(temp, directed = FALSE)
+#  return(graphK)
+#}
+
+#edj239 = edj239[-index,]
+#temp = apply(edj239,1,as.character)
+#temp = t(temp)
+#graph239 = graph_from_edgelist(temp, directed = FALSE)
+
+# Get adjacency #
+getAdjacency = function(graphK){
+  adjK = as.matrix(get.adjacency(graphK))
+  return(adjK)
+}
+
+#adj239 = as.matrix(get.adjacency(graph239))
+
+# Graph Nodes #
+getNodes = function(adjK){
+  graphNodesK <- data.frame(
+  id=as.integer(rownames(adjK)))
+  graphNodesK$group <- 1
+  #dim(graphNodesK)
+  return(graphNodesK)
+}
+
+#graphNodes239 <- data.frame(
+#  id=as.integer(rownames(adj239)))
+#graphNodes239$group <- 1
+#dim(graphNodes239)
+
+#plot(graph239,layout=layout_nicely(graph239))
+```
+
+Finding duplicates:
+```{r}
+getDuplicates = function(circles0){
+  for(i in 1:nrow(circles0)){
+    print(circles0[i, which(circles0[i,] != is.na(circles0[i,]))])
+  }
+  
+  #circles0 = getCircles("0.circles")
+  table(circles0[1,])
+  c0List = c(circles0)
+  c0List = c0List[which(c0List != is.na(c0List))]
+  length(unique(c0List))
+  table(c0List)
+  c0Multiple = as.matrix(table(c0List)[which(table(c0List) > 1)])
+  multipleNodes = as.numeric(rownames(c0Multiple))
+  
+  return(multipleNodes)
+  
+}
+
+duplicates0 = getDuplicates(circles0)
+duplicates0 
+  
+duplicates239 = getDuplicates(graph239Circles)
+duplicates239
+```
+
+TEST WITH 345:
+```{r}
+edj345 = getEdgesK("345.egonet")
+circles345= getCircles("345.circles")
+graph345 = getGraph(edj345)
+adj345 = getAdjacency(graph345)
+nodes345 = getNodes(adj345)
+dim(adj345)
+truth345 = getTrueCircles(nodes345, circles345)
+
+clusterMCL = function(graphK, nodesK, adjK){
+  cluster <- mcl(
+    x = adjK, addLoops=TRUE, ESM = TRUE)
+  nodesK$group = cluster$Cluster
+  clusterID1 = as.integer(nodesK$group)
+  clusterList1 = list()
+  
+  for(i in 1:length(unique(clusterID1))){
+    clusterList1[[i]] = nodesK$id[which(nodesK$group == unique(clusterID1)[i])]
+  }
+  
+  circlesKEstMCL = getCirclesEst(clusterList1)
+
+  clustKMCL = as_membership(cluster$Cluster)
+
+  communitiesKMCL = make_clusters(graphK, membership = clustKMCL)
+
+  plot(communitiesKMCL, graphK)
+}
+
+clusterMCL(graph345, nodes345, adj345)
+
+clusterK = function(graphK, nodesK, adjK){
+  #K-Means#
+  cluster239 = kmeans(adj239, centers = 4)
+  graphNodes239$group = cluster239$cluster
+  
+  # Checking the clusters #
+  clusterID = cluster239$cluster
+  nodesID = graphNodes239$id
+  
+  clusterList = list()
+
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodes239$id[which(graphNodes239$group == unique(clusterID)[i])]
+  }
+  
+  circles239EstK = getCirclesEst(clusterList)
+  
+  clust239Kmeans = as_membership(cluster239$cluster)
+  
+  communities239KMeans = make_clusters(graph239, membership = clust239Kmeans)
+  
+  plot(communities239KMeans, graph239) 
+  
+}
+
+nodesCircles = c()
+nodesCirclesMem = c()
+for(i in 1:dim(circles345)[1]){
+  nodesCircles = c(nodesCircles, circles345[i,])
+  nodesCirclesMem = c(nodesCirclesMem, rep(i, length(which(!is.na(circles345[i,])))))
+}
+nodesCircles =  nodesCircles[which(!is.na(nodesCircles))]
+length(nodesCirclesMem)
+nodesCirclesMem
+indexDupli = which(duplicated(nodesCircles))
+nodesCircles = nodesCircles[-indexDupli]
+nodesCirclesMem = nodesCirclesMem[-indexDupli]
+length(unique(nodesCircles))
+
+#length(!is.na(circles345[1,]))
+
+
+v1 = c(c(1,2,4), c(1,2,2), c(1,12,3))
+
+```
+
+
 
 Getting the graph objects:
 ```{r}
-graph.edges <- read.csv(
-  file = '0.edges',
-  sep=" ", header=F,
-  col.names=c("source", "target"))
+#graph.edges <- read.csv(
+#  file = '0.edges',
+#  sep=" ", header=F,
+#  col.names=c("source", "target"))
 
 #graph.edges <- graph.edges - min(graph.edges) + 1
 #graph.nodes <- data.frame(
@@ -156,9 +543,13 @@ graph.edges <- read.csv(
 #graph.nodes$group <- 1
 #graph.edges <- graphEdges - min(graphEdges) + 1
 
-edj0 = as.matrix(graph.edges)
+edj0 = as.matrix(graphEdges0)
+temp = apply(edj0,1,as.character)
+temp = t(temp)
+graph0 = graph_from_edgelist(temp, directed = FALSE)
+
 # Get adjacency #
-graph0 = graph_from_edgelist(edj0, directed = FALSE)
+#adj0 = as.matrix(get.adjacency(graph0))
 adj0 = as.matrix(get.adjacency(graph0)/2)
 graph0 = as.undirected(graph_from_adjacency_matrix(adj0))
 plot(graph0,layout=layout_nicely(graph0))
@@ -181,123 +572,180 @@ summary(HK2)
 # Node degrees
 # 'degree' has a mode of 'in' for in-degree, 'out' for out-degree,
 # and 'all' or 'total' for total degree. 
-deg <- degree(adj0)
+deg <- degree(graph0)
 deg
 hist(deg,  main="Histogram of node degree")
 
-degC = centr_degree(K1, normalized=T)
+degC = centr_degree(graph0, normalized=T)
 hist(degC$res)
 
-centr_clo(K1, mode="all", normalized=T) 
+centr_clo(graph0, mode="all", normalized=T) 
 
-centr_eigen(K1, directed=T, normalized=T) 
+centr_eigen(graph0, directed=T, normalized=T) 
 
 #betweenness(KADJ)
 #edge_betweenness(K1)
-centr_betw(K1)
+centr_betw(graph0)
+
+install.packages("amen")
+library(amen)
+data("dutchcollege")
+plot(dutchcollege)
+names(dutchcollege)
+View(dutchcollege$Y)
 ```
 
 Clustering:
 ```{r}
 ##############
-graph.edges = edj0
-graph.edges <- as.data.frame(graph.edges - min(graph.edges) + 1)
-graph.nodes <- data.frame(
-  id=seq(max(graph.edges) - min(graph.edges) + 1))
-graph.nodes$group <- 1
+graphNodes239 <- data.frame(
+  id=as.integer(rownames(adj239)))
+graphNodes239$group <- 1
+dim(graphNodes239)
 
-network <- forceNetwork(
-  Links = graph.edges - 1, Nodes = graph.nodes,
-  Source = "source", Target = "target",
-  NodeID = "id",
-  Group = "group", opacity = 0.8)
-network %>% saveNetwork(file = 'Net1.html')
+#network <- forceNetwork(
+#  Links = graph.edges - 1, Nodes = graph.nodes,
+#  Source = "source", Target = "target",
+#  NodeID = "id",
+#  Group = "group", opacity = 0.8)
+#network %>% saveNetwork(file = 'Net1.html')
 #print(network)
 
-graph.cluster <- function(nodes, edges){
-  n <- nrow(graph.nodes)
-  adjacency <- matrix(0, n, n)
-  index <- cbind(
-    graph.edges$source, graph.edges$target)
-  adjacency[index] <- 1
+graph.cluster <- function(adjacency){
+  #n <- nrow(nodes)
+  #adjacency <- matrix(0, n, n)
+  #index <- cbind(
+  #  edges$source, edges$target)
+  #adjacency[index] <- 1
+  
   cluster <- mcl(
     x = adjacency, addLoops=TRUE, ESM = TRUE)
   #print(cluster$Cluster)
   cluster$Cluster
 }
 
+colnames(edj239) = c("source", "target")
+edj239 = as.data.frame(edj239)
 # Assigning the clusters calculated #
-graph.nodes$group <- graph.cluster(
-  graph.nodes, graph.edges)
+graphNodes239$group <- graph.cluster(adj239)
 
 # Checking the clusters #
-clusterID = as.integer(graph.nodes$group)
+clusterID1 = as.integer(graphNodes239$group)
 clusterList1 = list()
 
-for(i in 1:length(unique(clusterID))){
-  clusterList1[[i]] = which(graph.nodes$group == unique(clusterID)[i])
+for(i in 1:length(unique(clusterID1))){
+  clusterList1[[i]] = graphNodes239$id[which(graphNodes239$group == unique(clusterID1)[i])]
 }
 
-circles0EstMCL = getCirclesEst(clusterList1)
+circles239EstMCL = getCirclesEst(clusterList1)
 
-clustMCL = as_membership(graph.cluster(
-  graph.nodes, graph.edges)) + 1
+clust239MCL = as_membership(graph.cluster(adj239))
 
-communities0MCL = make_clusters(graph0, membership = clustMCL)
+communities239MCL = make_clusters(graph239, membership = clust239MCL)
 
-plot(communities0MCL, graph0)
-
-
-#K-Means#
-cluster2 = kmeans(adj0, centers = 24)
-graph.nodes$group = cluster2$cluster
+plot(communities239MCL, graph239)
 
 
 ## IMPORTANT ##
+
+#K-Means#
+cluster239 = kmeans(adj239, centers = 4)
+graphNodes239$group = cluster239$cluster
+
 # Checking the clusters #
-clusterID = cluster2$cluster
-nodesID = graph.nodes$id
+clusterID = cluster239$cluster
+nodesID = graphNodes239$id
 
 clusterList = list()
 
 for(i in 1:length(unique(clusterID))){
-  clusterList[[i]] = which(graph.nodes$group == unique(clusterID)[i])
+  clusterList[[i]] = graphNodes239$id[which(graphNodes239$group == unique(clusterID)[i])]
 }
 
-circles0EstK = getCirclesEst(clusterList)
+circles239EstK = getCirclesEst(clusterList)
 
-clustKmeans = as_membership(cluster2$cluster)
+clust239Kmeans = as_membership(cluster239$cluster)
 
-communities0KMeans = make_clusters(graph0, membership = clustKmeans)
+communities239KMeans = make_clusters(graph239, membership = clust239Kmeans)
 
-plot(communities0KMeans, graph0)
-
-compareCircles = function(cTrue, cEst){
-  
-}
+plot(communities239KMeans, graph239)
 
 
-network.cluster <- forceNetwork(
-  Links = graph.edges - 1, Nodes = graph.nodes,
-  Source = "source", Target = "target",
-  NodeID = "id",
-  Group = "group", opacity = 0.8)
-network.cluster %>% saveNetwork(file = 'Net2.html')
+#network.cluster <- forceNetwork(
+#  Links = graph.edges - 1, Nodes = graph.nodes,
+#  Source = "source", Target = "target",
+#  NodeID = "id",
+#  Group = "group", opacity = 0.8)
+#network.cluster %>% saveNetwork(file = 'Net2.html')
 
 #print(network.cluster)
 
 ################################
 # FAST GREEDY #
-kc = fastgreedy.community(graph0)
+kc = fastgreedy.community(graph239)
+kc2 = cut_at(kc, 4)
+kc = make_clusters(graph239, membership = kc2)
 membership(kc)
-plot(kc, graph0)
+plot(kc, graph239)
 
 # LEADING EV #
-lev = leading.eigenvector.community(graph0)
-lev$membership
+lev = leading.eigenvector.community(graph239)
+lev2 = cut_at(lev, 4)
+lev = make_clusters(graph239, membership = lev2)
 membership(lev)
-plot(lev, graph0)
+plot(lev, graph239)
+
+
+
 ```
+
+COMPARING CLUSTERS:
+```{r}
+library(fpc)
+
+graphNodes0$id 
+
+
+# Make truth into vector #
+truth239 = c()
+for(i in 1:length(graphNodes239$id)){
+  for(j in 1:dim(graph239Circles)[1]){
+    if(graphNodes239$id[i] %in% graph239Circles[j,]){
+      truth239[i] = j  
+    }
+  }
+}
+missingNodes = graphNodes239$id[which(is.na(truth239))]
+truth239 = truth239[-which(is.na(truth239))]
+
+length(truth239)
+
+for(i in 1:24){
+  #print(graphNodes0$id[6] %in% circles0[i,])
+  print(which(circles0[i,] == graphNodes0$id[6]))
+}
+
+for(i in 1:2){
+  print(graphNodes0$id[6] %in% graphEdges0[,i])
+}
+
+which(graph239Circles[4,] == graphNodes239$id[98])
+
+est1 = cluster239$cluster
+
+truth239
+est1 = unname(est1)
+
+k = dist(adj239)
+
+#RAND between 0 and 1#
+clusterDist = cluster.stats(k, clustering = as.vector(truth239), alt.clustering = as.vector(cluster239$cluster))
+clusterDist
+```
+
+
+
+
 
 ```{r, eval = FALSE}
 mmsbGibbs0 = mmsb.collapsed.gibbs.sampler(adj0, 20, num.iterations = 1000, alpha = 1, beta.prior = list(diag(1,20,20),diag(1,20,20)))
@@ -593,42 +1041,14 @@ network.plot(mod.LSM)
 network.plot(mod.LSM,fitted=TRUE)
 ```
 
-Kaggle Data:
 ```{r}
-features = read_lines("features.txt")
-featureList = read.table("featureList.txt")
-head(features)
-testFeat = features[[1]]
-testFeat = unlist(strsplit(testFeat, ";"))
-
-# Reading Data #
-graphEdges = read.csv(
-  file = '0.egonet',
-  sep=" ", header=F)
-
-# Formatting to get EdgeList Format #
-nodeN = as.character(graphEdges[,1])
-nodeN = unlist(strsplit(nodeN, ":"))
-nodeN = as.numeric(nodeN)
-graphEdges = graphEdges[,-1]
-
-edgeList0 = as.data.frame(matrix(0,1,2))
-colnames(edgeList0) = c("Source", "Target")
-for(i in 1:dim(graphEdges)[1]){
-  for(j in 1:dim(graphEdges)[2]){
-    newEdge = c(nodeN[i], graphEdges[i,j])
-    edgeList0 = rbind(edgeList0, newEdge)
-  }
-}
-edgeList0 = edgeList0[-1,]
-edgeList0 <- edgeList0[ !is.na(apply(edgeList0 ,1,mean)) ,]
-edgeList0 = unique(t(as.matrix(apply(edgeList0, 1, sort))))
-
 # Getting it to the correct type #
-net0 = graph_from_edgelist(as.matrix(edgeList0), directed = F)
-plot(net0)
-adj0 = get.adjacency(net0)
-adj0 = as.matrix(adj0)
+net239 = graph_from_edgelist(as.matrix(edgeList239), directed = F)
+
+plot(net239)
+adj239 = get.adjacency(net239)
+adj239 = as.matrix(adj239)
+dim(adj239)
 
 coso = (adj0^2)/2
 
@@ -755,4 +1175,23 @@ network.cluster <- forceNetwork(
 network.cluster %>% saveNetwork(file = 'Net2.html')
 
 print(network.cluster)
+```
+
+```{r}
+library(SpecClustPack)
+
+data(karate)
+
+k1 = get.adjacency(karate)
+
+SCVec = specClust(adjMat = as.matrix(k1), nBlocks = 5, nIter = 100)
+SCVec0 = specClust(adjMat = adj0, nBlocks = 20, nIter = 1000)
+
+```
+
+lda test
+```{r}
+k = BM_bernoulli("SBM", adj = adj0)
+k$estimate()
+which.max(k$ICL)
 ```
