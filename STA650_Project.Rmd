@@ -31,6 +31,7 @@ library(MCL)
 library(mixedMem)
 library(CIDnetworks)
 library(data.table)
+library(stringr)
 library(readr)
 library(sand)
 library(sna)
@@ -160,8 +161,8 @@ getTrueCircles = function(graphNodesK, circlesK){
   return(truthK)
 }
 
-length(getTrueCircles(graphNodes239, graph239Circles))
-length(getTrueCircles(nodes345, circles345))
+#length(getTrueCircles(graphNodes239, graph239Circles))
+#length(getTrueCircles(nodes345, circles345))
 
 getMissingNodes = function(grapNodesK, truthK){
   missingNodes = graphNodesK$id[which(is.na(truthK))]
@@ -195,6 +196,40 @@ getNodes = function(adjK){
   graphNodesK$group <- 1
   #dim(graphNodesK)
   return(graphNodesK)
+}
+
+clustersToCircles = function(memK){
+  y = memK
+  circlesEstK = list()
+  
+  for(i in 1:length(y)){
+    circlesEstK[[i]] = t(as.matrix(y[[i]]))
+  }
+  
+  circlesEstK = rbind.fill.matrix(circlesEstK)
+  
+  return(circlesEstK)
+}
+
+# FAST GREEDY #
+fastGreedyClust = function(graphK, centersK){
+  kc = fastgreedy.community(graphK)
+  
+  if(centersK != 0){
+    kc2 = cut_at(kc, centersK)
+    kc = make_clusters(graphK, membership = kc2)
+  }
+  
+  #membership(kc)
+  #plot(kc, graphK)
+  return(kc)
+}
+
+# LEADING EV #
+levClust = function(graphK){
+  lev = leading.eigenvector.community(graphK)
+  #lev = make_clusters(graphK, membership = lev$membership)
+  return(lev)
 }
 
 #graphEdges0 = read.csv(
@@ -450,6 +485,20 @@ duplicates239 = getDuplicates(graph239Circles)
 duplicates239
 ```
 
+TEST WITH 239:
+```{r}
+edj239 = getEdgesK("239.egonet")
+circles239= getCircles("239.circles")
+graph239 = getGraph(edj239)
+adj239 = getAdjacency(graph239)
+nodes239 = getNodes(adj239)
+dim(adj239)
+plot(graph239)
+```
+
+
+
+
 TEST WITH 345:
 ```{r}
 edj345 = getEdgesK("345.egonet")
@@ -459,7 +508,7 @@ adj345 = getAdjacency(graph345)
 nodes345 = getNodes(adj345)
 dim(adj345)
 truth345 = getTrueCircles(nodes345, circles345)
-
+########
 clusterMCL = function(graphK, nodesK, adjK){
   cluster <- mcl(
     x = adjK, addLoops=TRUE, ESM = TRUE)
@@ -478,54 +527,66 @@ clusterMCL = function(graphK, nodesK, adjK){
   communitiesKMCL = make_clusters(graphK, membership = clustKMCL)
 
   plot(communitiesKMCL, graphK)
+  
+  return(circlesKEstMCL)
 }
 
-clusterMCL(graph345, nodes345, adj345)
+mclEST239 = clusterMCL(graph239, nodes239, adj239)
 
-clusterK = function(graphK, nodesK, adjK){
+############
+
+clusterK = function(graphK, graphNodesK, adjK, centersK){
   #K-Means#
-  cluster239 = kmeans(adj239, centers = 4)
-  graphNodes239$group = cluster239$cluster
+  clusterK = kmeans(adjK, centers = centersK)
+  graphNodesK$group = clusterK$cluster
   
   # Checking the clusters #
-  clusterID = cluster239$cluster
-  nodesID = graphNodes239$id
+  clusterID = clusterK$cluster
+  nodesID = graphNodesK$id
   
   clusterList = list()
 
   for(i in 1:length(unique(clusterID))){
-    clusterList[[i]] = graphNodes239$id[which(graphNodes239$group == unique(clusterID)[i])]
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
   }
   
-  circles239EstK = getCirclesEst(clusterList)
+  circlesKEstK = getCirclesEst(clusterList)
   
-  clust239Kmeans = as_membership(cluster239$cluster)
+  clustKmeans = as_membership(clusterK$cluster)
   
-  communities239KMeans = make_clusters(graph239, membership = clust239Kmeans)
+  communitiesKMeans = make_clusters(graphK, membership = clustKmeans)
   
-  plot(communities239KMeans, graph239) 
+  plot(communitiesKMeans, graphK) 
+  
+  return(circlesKEstK)
   
 }
 
-nodesCircles = c()
-nodesCirclesMem = c()
-for(i in 1:dim(circles345)[1]){
-  nodesCircles = c(nodesCircles, circles345[i,])
-  nodesCirclesMem = c(nodesCirclesMem, rep(i, length(which(!is.na(circles345[i,])))))
-}
-nodesCircles =  nodesCircles[which(!is.na(nodesCircles))]
-length(nodesCirclesMem)
-nodesCirclesMem
-indexDupli = which(duplicated(nodesCircles))
-nodesCircles = nodesCircles[-indexDupli]
-nodesCirclesMem = nodesCirclesMem[-indexDupli]
-length(unique(nodesCircles))
+kEst239 = clusterK(graph239, nodes239, adj239, 4)
+
+#nodesCircles = c()
+#nodesCirclesMem = c()
+#for(i in 1:dim(circles345)[1]){
+#  nodesCircles = c(nodesCircles, circles345[i,])
+#  nodesCirclesMem = c(nodesCirclesMem, rep(i, length(which(!is.na(circles345[i,])))))
+#}
+#nodesCircles =  nodesCircles[which(!is.na(nodesCircles))]
+#length(nodesCirclesMem)
+#nodesCirclesMem
+#indexDupli = which(duplicated(nodesCircles))
+#nodesCircles = nodesCircles[-indexDupli]
+#nodesCirclesMem = nodesCirclesMem[-indexDupli]
+#length(unique(nodesCircles))
 
 #length(!is.na(circles345[1,]))
 
-
-v1 = c(c(1,2,4), c(1,2,2), c(1,12,3))
-
+edj611 = getEdgesK("611.egonet")
+circles611= getCircles("611.circles")
+graph611 = getGraph(edj611)
+adj611 = getAdjacency(graph611)
+nodes611 = getNodes(adj611)
+dim(adj611)
+plot(graph611)
 ```
 
 
@@ -679,21 +740,63 @@ plot(communities239KMeans, graph239)
 #network.cluster %>% saveNetwork(file = 'Net2.html')
 
 #print(network.cluster)
+```
 
-################################
+```{r}
+#################
+###############
+
 # FAST GREEDY #
-kc = fastgreedy.community(graph239)
-kc2 = cut_at(kc, 4)
-kc = make_clusters(graph239, membership = kc2)
-membership(kc)
-plot(kc, graph239)
+fastGreedyClust = function(graphK, centersK){
+  kc = fastgreedy.community(graphK)
+  
+  if(centersK != 0){
+    kc2 = cut_at(kc, centersK)
+    kc = make_clusters(graphK, membership = kc2)
+  }
+  
+  #membership(kc)
+  #plot(kc, graphK)
+  return(kc)
+}
+
+kc239 = fastGreedyClust(graph239, 4)
+plot(kc239, graph239)
+FGCEst239 = clustersToCircles(kc239)
+
+kc345 = fastGreedyClust(graph345, 0)
+plot(kc345, graph345)
+FGCEst345 = clustersToCircles(kc345)
+
+
+
+#kc = fastgreedy.community(graph345)
+#kc2 = cut_at(kc, 4)
+#kc = make_clusters(graph239, membership = kc2)
+#membership(kc)
+#plot(kc, graph345)
+#View(adj239)
 
 # LEADING EV #
-lev = leading.eigenvector.community(graph239)
-lev2 = cut_at(lev, 4)
-lev = make_clusters(graph239, membership = lev2)
-membership(lev)
-plot(lev, graph239)
+levClust = function(graphK){
+  lev = leading.eigenvector.community(graphK)
+  #lev = make_clusters(graphK, membership = lev$membership)
+  return(lev)
+}
+lev239 = levClust(graph239)
+plot(lev239, graph239)
+levEst239 = clustersToCircles(lev239)
+
+lev345 = levClust(graph345)
+plot(lev345, graph345)
+levEst345 = clustersToCircles(lev345)
+
+
+#lev = leading.eigenvector.community(graph239)
+#lev2 = cut_at(lev, 4)
+#lev = make_clusters(graph239, membership = lev2)
+#membership(lev)
+#plot(lev, graph239)
 
 
 
@@ -1178,15 +1281,49 @@ print(network.cluster)
 ```
 
 ```{r}
+install.packages("RSpectra")
+install.packages("biglm")
+library(devtools)
+install_github("norbertbin/SpecClustPack")
 library(SpecClustPack)
 
 data(karate)
 
 k1 = get.adjacency(karate)
 
-SCVec = specClust(adjMat = as.matrix(k1), nBlocks = 5, nIter = 100)
-SCVec0 = specClust(adjMat = adj0, nBlocks = 20, nIter = 1000)
+#SCVec = specClust(adjMat = as.matrix(k1), nBlocks = 5, nIter = 100)
+SCVec239 = specClust(adjMat = adj239, nBlocks = 4, nIter = 1000)
 
+
+clusterSpec = function(graphK, graphNodesK, adjK, blocksK){
+  # Spectral Clustering #
+  SCVecK = specClust(adjMat = adjK, nBlocks = blocksK, nIter = 1000)
+  #clusterK = kmeans(adjK, centers = centersK)
+  graphNodesK$group = SCVecK
+  
+  # Checking the clusters #
+  clusterID = SCVecK
+  nodesID = graphNodesK$id
+  
+  clusterList = list()
+
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesKEstSC = getCirclesEst(clusterList)
+  
+  clustKSC = as_membership(SCVecK)
+  
+  communitiesSC = make_clusters(graphK, membership = clustKSC)
+  
+  plot(communitiesSC, graphK) 
+  
+  return(circlesKEstSC)
+  
+}
+
+specEst239 = clusterSpec(graph239, nodes239, adj239, 4)
 ```
 
 lda test
