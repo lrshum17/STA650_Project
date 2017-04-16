@@ -73,6 +73,30 @@ dim(adj8100)
 plot(graph8100)
 ```
 
+GETTING FEATURES
+```{r}
+library(readr)
+library(stringr)
+library(dplyr)
+features = read_lines("features.txt")
+featureList = read_lines("featureList.txt")
+featList = paste0("[0-9]+\\s", featureList)
+head(features)
+testFeat = features[[1]]
+extractValue = function(node, feat){
+  sapply(feat, str_extract, string = node) %>%
+    str_extract(pattern = "[0-9]+")
+}
+extractValue(testFeat, featList)
+resMat = lapply(features, extractValue, feat = featList) %>% do.call(rbind, .)
+featuresTable = apply(resMat, 2, as.numeric)
+colnames(featuresTable) = featureList
+dim(featuresTable)
+write.csv2(featuresTable, file = "featuresTable.csv")
+```
+
+
+
 Loading the data:
 ```{r}
 #getEdges = function(graphFile){
@@ -407,11 +431,25 @@ specEst239 = clusterSpec(graph239, nodes239, adj239, trueCircles239)
 
 Kaggle Data:
 ```{r}
+library(readr)
+library(stringr)
+library(dplyr)
 features = read_lines("features.txt")
-featureList = read.table("featureList.txt")
+featureList = read_lines("featureList.txt")
+featList = paste0("[0-9]+\\s", featureList)
 head(features)
 testFeat = features[[1]]
-testFeat = unlist(strsplit(testFeat, ";"))
+extractValue = function(node, feat){
+  sapply(feat, str_extract, string = node) %>%
+    str_extract(pattern = "[0-9]+")
+}
+extractValue(testFeat, featList)
+resMat = lapply(features, extractValue, feat = featList) %>% do.call(rbind, .)
+featuresTable = apply(resMat, 2, as.numeric)
+colnames(featuresTable) = featureList
+dim(featuresTable)
+write.csv2(featuresTable, file = "featuresTable.csv")
+
 
 # Reading Data #
 #graph239Circles = read.csv(
