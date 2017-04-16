@@ -274,7 +274,7 @@ clustersToCircles = function(memK){
 }
 
 # FAST GREEDY #
-fastGreedyClust = function(graphK, centersK){
+fastGreedyClust = function(graphK, graphNodesK, centersK){
   kc = fastgreedy.community(graphK)
   
   if(centersK != 0){
@@ -282,20 +282,56 @@ fastGreedyClust = function(graphK, centersK){
     kc = make_clusters(graphK, membership = kc2)
   }
   
-  #membership(kc)
+  kcLabels = kc$membership
+  # Checking the clusters #
+  clusterID = kcLabels
+  nodesID = graphNodesK$id
+  graphNodesK$group = kcLabels
+  
+  clusterList = list()
+
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesFGEst = getCirclesEst(clusterList)
+  
   plot(kc, graphK, main ="Fast & Greedy")
-  return(kc)
+  
+  return(circlesFGEst)
 }
+
+K1 = fastGreedyClust(graph239, nodes239, trueCircles239)
 
 # LEADING EV #
-levClust = function(graphK){
+levClust = function(graphK, graphNodesK){
   lev = leading.eigenvector.community(graphK)
   #lev = make_clusters(graphK, membership = lev$membership)
+  
+  kcLabels = lev$membership
+  # Checking the clusters #
+  clusterID = kcLabels
+  nodesID = graphNodesK$id
+  graphNodesK$group = kcLabels
+  
+  clusterList = list()
+
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesLevEst = getCirclesEst(clusterList)
+  
   plot(lev, graphK, main ="LEV")
-  return(lev)
+  
+  return(circlesLevEst)  
+
 }
 
-# Spectral Clustering #
+k2 = levClust(graph239, nodes239)
+
+#
+Spectral Clustering #
 clusterSpec = function(graphK, graphNodesK, adjK, blocksK){
   # Spectral Clustering #
   SCVecK = specClust(adjMat = adjK, nBlocks = blocksK, nIter = 1000)
@@ -358,7 +394,6 @@ clusterSBM = function(graphK, graphNodesK, adjK, centersK){
   plot(sbmK)
   
   return(circlesKEstK)
-  
 }
 
 # K Means #
