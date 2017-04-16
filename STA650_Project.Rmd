@@ -90,9 +90,17 @@ extractValue = function(node, feat){
 extractValue(testFeat, featList)
 resMat = lapply(features, extractValue, feat = featList) %>% do.call(rbind, .)
 featuresTable = apply(resMat, 2, as.numeric)
+rownames(featuresTable) = as.character(seq(0,27519))
 colnames(featuresTable) = featureList
 dim(featuresTable)
 write.csv2(featuresTable, file = "featuresTable.csv")
+
+subsetFeatures = function(featTable, nodeList){
+  featTableSub = featTable[nodeList+1,]
+  return(featTableSub)
+}
+
+subFeat8100 = subsetFeatures(featuresTable, unique(nodes8100$id))
 ```
 
 
