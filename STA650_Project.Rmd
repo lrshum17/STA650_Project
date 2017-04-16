@@ -13,6 +13,19 @@ SBM
 SBMMM
 spectral cov
 
+2738
+239
+11364
+18005
+18543
+24758
+17951
+8239
+26321
+2895
+
+8100
+
 Packages:
 ```{r, warning = FALSE, comment = FALSE, message = FALSE, echo = FALSE, size = "small"}
 set.seed(101)
@@ -41,6 +54,23 @@ library(eigenmodel)
 library(blockmodels)
 library(lda)
 library(plyr)
+library(SpecClustPack)
+
+edj2895 = getEdgesK("2895.egonet")
+circles2895= getCircles("2895.circles")
+graph2895 = getGraph(edj2895)
+adj2895 = getAdjacency(graph2895)
+nodes2895 = getNodes(adj2895)
+dim(adj2895)
+plot(graph2895)
+
+edj8100 = getEdgesK("8100.egonet")
+circles8100= getCircles("8100.circles")
+graph8100 = getGraph(edj8100)
+adj8100 = getAdjacency(graph8100)
+nodes8100 = getNodes(adj8100)
+dim(adj8100)
+plot(graph8100)
 ```
 
 Loading the data:
@@ -221,7 +251,7 @@ fastGreedyClust = function(graphK, centersK){
   }
   
   #membership(kc)
-  #plot(kc, graphK)
+  plot(kc, graphK, main ="Fast & Greedy")
   return(kc)
 }
 
@@ -229,58 +259,151 @@ fastGreedyClust = function(graphK, centersK){
 levClust = function(graphK){
   lev = leading.eigenvector.community(graphK)
   #lev = make_clusters(graphK, membership = lev$membership)
+  plot(lev, graphK, main ="LEV")
   return(lev)
 }
 
-#graphEdges0 = read.csv(
-#  file = '0.edges',
-#  sep=" ", header=F,
-#  col.names=c("source", "target"))
+# Spectral Clustering #
+clusterSpec = function(graphK, graphNodesK, adjK, blocksK){
+  # Spectral Clustering #
+  SCVecK = specClust(adjMat = adjK, nBlocks = blocksK, nIter = 1000)
+  #clusterK = kmeans(adjK, centers = centersK)
+  graphNodesK$group = SCVecK
+  
+  # Checking the clusters #
+  clusterID = SCVecK
+  nodesID = graphNodesK$id
+  
+  clusterList = list()
 
-#graphEdges107 = read.csv(
-#  file = '107.edges',
-#  sep=" ", header=F,
-#  col.names=c("source", "target"))
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesKEstSC = getCirclesEst(clusterList)
+  
+  clustKSC = as_membership(SCVecK)
+  
+  communitiesSC = make_clusters(graphK, membership = clustKSC)
+  
+  plot(communitiesSC, graphK, main ="Spectral Clustering") 
+  
+  return(circlesKEstSC)
+  
+}
 
-#fromhello = read.csv("0.circles", sep= "\n", header = F)
-#graphCircles = read.csv(
-#  file = '0.circles',
-#  sep = " ", header=F)
+# SBM #
+clusterSBM = function(graphK, graphNodesK, adjK, centersK){
+  
+  #SBM#
+  sbmK = mixer(as.matrix(adjK), qmin = 1, qmax = centersK+1)
+  sbmKOutput = getModel(sbmK)
+  
+  clusterLabels = c()
+  for(i in 1:dim(sbmKOutput$Taus)[2]){
+    clusterLabels[i] = which.max(sbmKOutput$Taus[,i])
+  }
+  
+  graphNodesK$group = clusterLabels
+  
+  # Checking the clusters #
+  clusterID = clusterLabels
+  nodesID = graphNodesK$id
+  
+  clusterList = list()
 
-#graph239Egonet = read.csv(
-#  file = '239.egonet',
-#  sep = " ", header=F)
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesKEstK = getCirclesEst(clusterList)
+  
+  clustSBM = as_membership(clusterLabels)
+  
+  communitiesSBM = make_clusters(graphK, membership = clustSBM)
+  
+  plot(communitiesSBM, graphK, main ="SBM")
+  plot(sbmK)
+  
+  return(circlesKEstK)
+  
+}
 
-#graph239Circles = read.csv(
-#  file = '239.circles',
-#  sep = " ", header=F)
+# K Means #
+clusterK = function(graphK, graphNodesK, adjK, centersK){
+  #K-Means#
+  clusterK = kmeans(adjK, centers = centersK)
+  graphNodesK$group = clusterK$cluster
+  
+  # Checking the clusters #
+  clusterID = clusterK$cluster
+  nodesID = graphNodesK$id
+  
+  clusterList = list()
 
-#readLines("0.featnames")
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesKEstK = getCirclesEst(clusterList)
+  
+  clustKmeans = as_membership(clusterK$cluster)
+  
+  communitiesKMeans = make_clusters(graphK, membership = clustKmeans)
+  
+  plot(communitiesKMeans, graphK, main ="K-Means") 
+  
+  return(circlesKEstK)
+  
+}
 
-#graphCircles2 = read.table(
-#  file = '0.circles',
-#  sep = " ", header=T)
+# MCL #
+clusterMCL = function(graphK, nodesK, adjK){
+  cluster <- mcl(
+    x = adjK, addLoops=TRUE, ESM = TRUE)
+  nodesK$group = cluster$Cluster
+  clusterID1 = as.integer(nodesK$group)
+  clusterList1 = list()
+  
+  for(i in 1:length(unique(clusterID1))){
+    clusterList1[[i]] = nodesK$id[which(nodesK$group == unique(clusterID1)[i])]
+  }
+  
+  circlesKEstMCL = getCirclesEst(clusterList1)
 
-#hello = read.csv("0.egofeat", header = F)
+  clustKMCL = as_membership(cluster$Cluster)
 
+  communitiesKMCL = make_clusters(graphK, membership = clustKMCL)
 
-# Features #
-#featEgo = read.csv(
-#  file = '0.egofeat',
-#  sep="", header=F)
-
-#graphFeatNames = read.csv(
-#  file = '0.featnames',
-#  sep="", header=F)
-#graphFeatNames = as.character(graphFeatNames[,2])
-
-#graphFeat = read.csv(
-#  file = '0.feat',
-#  sep="", header=F)
-#graphFeat = graphFeat[,-1]
-#colnames(graphFeat) = graphFeatNames
-#colSums(graphFeat)
+  plot(communitiesKMCL, graphK, main ="Markov Clustering")
+  
+  return(circlesKEstMCL)
+}
 ```
+
+Full Example with 239:
+```{r}
+# Setting #
+edj239 = getEdgesK("239.egonet")
+circles239= getCircles("239.circles")
+graph239 = getGraph(edj239)
+adj239 = getAdjacency(graph239)
+nodes239 = getNodes(adj239)
+dim(adj239)
+plot(graph239)
+
+trueCircles239 = dim(circles239)[1]
+
+# Clustering #
+kEst239 = clusterK(graph239, nodes239, adj239, trueCircles239)
+fgEst239 = fastGreedyClust(graph239, trueCircles239)
+levEst239 = levClust(graph239)
+mclEST239 = clusterMCL(graph239, nodes239, adj239)
+sbmEst239 = clusterSBM(graph239, nodes239, adj239, trueCircles239)
+specEst239 = clusterSpec(graph239, nodes239, adj239, trueCircles239)
+```
+
+
 
 Kaggle Data:
 ```{r}
@@ -580,13 +703,25 @@ kEst239 = clusterK(graph239, nodes239, adj239, 4)
 
 #length(!is.na(circles345[1,]))
 
-edj611 = getEdgesK("611.egonet")
-circles611= getCircles("611.circles")
-graph611 = getGraph(edj611)
-adj611 = getAdjacency(graph611)
-nodes611 = getNodes(adj611)
-dim(adj611)
-plot(graph611)
+edj2895 = getEdgesK("2895.egonet")
+circles2895= getCircles("2895.circles")
+graph2895 = getGraph(edj2895)
+adj2895 = getAdjacency(graph2895)
+nodes2895 = getNodes(adj2895)
+dim(adj2895)
+plot(graph2895)
+
+edj1357 = getEdgesK("1357.egonet")
+circles1357= getCircles("1357.circles")
+graph1357 = getGraph(edj1357)
+adj1357 = getAdjacency(graph1357)
+nodes1357 = getNodes(adj1357)
+dim(adj1357)
+plot(graph1357)
+
+kEst345 = clusterK(graph345, nodes345, adj345, 7)
+kEst611 = clusterK(graph611, nodes611, adj611, 10)
+
 ```
 
 
@@ -1032,8 +1167,60 @@ sbm classifiaction
 ```{r}
 setSeed(101)
 
-graph0.sbm <- mixer(as.matrix(adj0), qmin=2, qmax=28, method = "")
-graph0.sbm.class <- mixer(as.matrix(adj0), qmin=2, qmax=28, method = "classification")
+sbm239 = mixer(as.matrix(adj239), qmin = 1, qmax = 5)
+sbm239Output = getModel(sbm239)
+sbm239Output$q
+sbm239Output$alphas
+sbm239Output$Taus[, 1:3]
+dim(sbm239Output$Taus)
+clusterLabels = c()
+for(i in 1:dim(sbm239Output$Taus)[2]){
+  clusterLabels[i] = which.max(sbm239Output$Taus[,i])
+}
+
+clusterSBM = function(graphK, graphNodesK, adjK, centersK){
+  
+  #SBM#
+  sbmK = mixer(as.matrix(adjK), qmin = 1, qmax = centersK+1)
+  sbmKOutput = getModel(sbmK)
+  
+  clusterLabels = c()
+  for(i in 1:dim(sbmKOutput$Taus)[2]){
+    clusterLabels[i] = which.max(sbmKOutput$Taus[,i])
+  }
+  
+  graphNodesK$group = clusterLabels
+  
+  # Checking the clusters #
+  clusterID = clusterLabels
+  nodesID = graphNodesK$id
+  
+  clusterList = list()
+
+  for(i in 1:length(unique(clusterID))){
+    clusterList[[i]] = graphNodesK$id[which(graphNodesK$group == unique(clusterID)[i])]
+  }
+  
+  circlesKEstK = getCirclesEst(clusterList)
+  
+  clustKmeans = as_membership(clusterLabels)
+  
+  communitiesKMeans = make_clusters(graphK, membership = clustKmeans)
+  
+  plot(communitiesKMeans, graphK)
+  plot(sbmK)
+  
+  return(circlesKEstK)
+  
+}
+
+sbmEst239 = clusterSBM(graph239, nodes239, adj239, 4)
+sbmEst611 = clusterSBM(graph611, nodes611, adj611, 10)
+
+
+which.max(sbm239Output$Taus[,2])
+
+graph0.sbm.class <- mixer(as.matrix(adj8100), qmin=2, qmax=10, method = "classification")
 save(graph0.sbm, file = "SBM0_v2.RData")
 
 graph0.sbm.output = getModel(graph0.sbm)
@@ -1048,9 +1235,9 @@ graph0.sbm.output$Taus[, 1:3]
 
 graph0.sbm.class.output$q
 graph0.sbm.class.output$alphas
-graph0.sbm.class.output$Taus[, 1:3]
+graph0.sbm.class.output$Taus[,1:10]
 
-#plot(graph0.sbm, classes = NULL)
+plot(graph0.sbm.class)
 ```
 sbm classifiaction
 ```{r}
@@ -1324,6 +1511,49 @@ clusterSpec = function(graphK, graphNodesK, adjK, blocksK){
 }
 
 specEst239 = clusterSpec(graph239, nodes239, adj239, 4)
+specEst345 = clusterSpec(graph345, nodes345, adj345, 7)
+specEst611 = clusterSpec(graph611, nodes611, adj611, 10)
+
+covProbMat = matrix(c(0.2,0.4,0.1,0.3,0.2,0.4,0.1,0.3,0.2,0.4,0.1,0.3,0.2,0.4,0.1,0.3),
+                    nrow=4, byrow = TRUE)
+nMembers = c(15,20,45,23)
+covMat1 = simBernCovar(covProbMat, nMembers)
+covMat1
+dim(covMat1)
+dim(adj239)
+
+spec2Est239 = casc(adj239, covMat1, nBlocks = 4)
+
+covProbMat = matrix(c(.8, .2, .2, .8), nrow = 2)
+nMembers = c(50, 50)
+k = simBernCovar(covProbMat, nMembers)
+
+plotAdj(adj239)
+
+library(Matrix)
+
+library(devtools)
+install_github("norbertbin/SpecClustPack", force = TRUE)
+library(SpecClustPack)
+
+blockPMat = matrix(c(.6,.2,.2,.6), nrow=2)
+nMembers = c(5,5)
+adjMat = simSBM(blockPMat, nMembers)
+clusters = specClust(adjMat, nBlocks = 2)
+misClustRate(clusters, nMembers)
+estSBM(adjMat, clusters)
+covProbMat = matrix(c(.8,.2,.2,.8), nrow=2)
+nMembers = c(5,5)
+covMat = simBernCovar(covProbMat, nMembers)
+casc(adjMat, covMat, nBlocks=2)
+
+
+
+levEst239 = levClust(graph239)
+levEst345 = levClust(graph345)
+levEst611 = levClust(graph611)
+
+
 ```
 
 lda test
