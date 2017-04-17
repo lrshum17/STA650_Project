@@ -101,8 +101,36 @@ subsetFeatures = function(featTable, nodeList){
 }
 
 subFeat8100 = subsetFeatures(featuresTable, unique(nodes8100$id))
+
+
 ```
 
+```{r}
+featClean = function(feat){
+  for(i in 1:dim(feat)[1]){
+    for(j in 1:dim(feat)[2]){
+      if(is.na(feat[i,j])){
+        feat[i,j] = 0
+      }
+    }
+  }
+ return(feat) 
+}
+
+subFeat239 = featClean(subFeat239)
+subFeat239K = subFeat239[,c(22,25)]
+colnames(subFeat239)
+
+subsetFeatures(featuresTable, nodes239)
+
+
+subFeat8100 = subsetFeatures(featuresTable, unique(nodes8100$id))
+subFeat8100 = featClean(subFeat8100)
+subFeat8100K = subFeat8100[,c(13,22,37)]
+colnames(subFeat8100K) = c("a", "b", "c")
+
+k1 = casc(adj8100, subFeat8100K, nBlocks = 9)
+```
 
 
 Loading the data:
@@ -330,8 +358,7 @@ levClust = function(graphK, graphNodesK){
 
 k2 = levClust(graph239, nodes239)
 
-#
-Spectral Clustering #
+#Spectral Clustering #
 clusterSpec = function(graphK, graphNodesK, adjK, blocksK){
   # Spectral Clustering #
   SCVecK = specClust(adjMat = adjK, nBlocks = blocksK, nIter = 1000)
@@ -448,6 +475,25 @@ clusterMCL = function(graphK, nodesK, adjK){
 }
 ```
 
+Results:
+```{r}
+install.packages("rJava")
+library(rJava)
+install.packages("xlsx")
+library(xlsx)
+install.packages("readxl")
+library(readxl)
+
+clustRes = read_excel("Loss_Result.xlsx")
+clustRes = clustRes[-10,]
+plot(x = seq(1,9), y = clustRes$FastGreedy, type = "l", col = 1)
+points(x = seq(1,9), y = clustRes$FirstEigen, type = "l", col = 2)
+points(x = seq(1,9), y = clustRes$Spectral, type = "l", col = 3)
+points(x = seq(1,9), y = clustRes$MCL, type = "l", col = 4)
+
+```
+
+
 Full Example with 239:
 ```{r}
 # Setting #
@@ -463,11 +509,42 @@ trueCircles239 = dim(circles239)[1]
 
 # Clustering #
 kEst239 = clusterK(graph239, nodes239, adj239, trueCircles239)
-fgEst239 = fastGreedyClust(graph239, trueCircles239)
+fgEst239 = fastGreedyClust(graph239, nodes239, trueCircles239)
+fgEst239_2 = fastGreedyClust2(graph239)
 levEst239 = levClust(graph239)
 mclEST239 = clusterMCL(graph239, nodes239, adj239)
 sbmEst239 = clusterSBM(graph239, nodes239, adj239, trueCircles239)
 specEst239 = clusterSpec(graph239, nodes239, adj239, trueCircles239)
+subFeat239 = as.data.frame(subsetFeatures(featuresTable, nodes239$id))
+
+gendercolor = as.character(subFeat239$`hometown;id`)
+gendercolorP = unique(gendercolor)
+gendercolorP = gendercolorP[-2]
+
+str_replace(gendercolor, gendercolorP, as.character(seq(1,21)))
+
+
+gsub2 <- function(pattern, replacement, x, ...) {
+for(i in 1:length(pattern))
+x <- gsub(pattern[i], replacement[i], x, ...)
+x
+}
+
+from <- gendercolorP
+to <- as.character(seq(1,21))
+
+gendercolor2 = as.numeric(gsub2(from, to, gendercolor))
+
+gendercolor2 = gsub ("0", "red", gendercolor)#specifying  the  colors for  female  (=1)  and male  (=2)
+gendercolor2 = gsub ("1", "blue", gendercolor2)
+
+plot(graph239 , layout = layout.fruchterman.reingold , vertex.color
+= gendercolor2 ,
+vertex.size = 15, vertex.label.cex = 0.65,  main = "Gender (Red=
+F, Blue=M)",
+frame = TRUE)
+
+plot(kc, graph239, layout = layout.fruchterman.reingold)
 ```
 
 
@@ -1626,9 +1703,37 @@ estSBM(adjMat, clusters)
 covProbMat = matrix(c(.8,.2,.2,.8), nrow=2)
 nMembers = c(5,5)
 covMat = simBernCovar(covProbMat, nMembers)
-casc(adjMat, covMat, nBlocks=2)
+casc(adjMat, as.matrix(covMat), nBlocks=2)
+
+featClean = function(feat){
+  for(i in 1:dim(feat)[1]){
+    for(j in 1:dim(feat)[2]){
+      if(is.na(feat[i,j])){
+        feat[i,j] = 0
+      }
+    }
+  }
+ return(feat) 
+}
+
+subFeat239 = featClean(subFeat239)
+subFeat239K = subFeat239[,c(22,25)]
+colnames(subFeat239)
+
+subsetFeatures(featuresTable, nodes239)
 
 
+subFeat8100 = subsetFeatures(featuresTable, unique(nodes8100$id))
+subFeat8100 = featClean(subFeat8100)
+subFeat8100K = subFeat8100[,c(13,22,37)]
+colnames(subFeat8100K) = c("a", "b", "c")
+
+k1 = casc(adj8100, subFeat8100K, nBlocks = 9)
+
+
+
+
+test1 = model.matrix(~ a+b+c -1, data = as.data.frame(subFeat8100K))
 
 levEst239 = levClust(graph239)
 levEst345 = levClust(graph345)
